@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minimal WebOS</title>
+  <style>
+    :root {
+      --bg-base: #1e1e2e;
+      --bg-surface: #181825;
+      --bg-overlay: #313244;
+      --border: rgba(255, 255, 255, 0.08);
+      --text-main: #cdd6f4;
+      --text-sub: #a6adc8;
+      --accent: #89b4fa;
+      --accent-hover: #b4befe;
+      --danger: #f38ba8;
+      --warning: #f9e2af;
+      --success: #a6e3a1;
+      --shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    body { background: var(--bg-surface); color: var(--text-main); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+    /* Top Status Bar */
+    #top-bar {
+      height: 36px;
+      background: rgba(24, 24, 37, 0.75);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 2000;
+      font-size: 13px;
+    }
+    .top-left, .top-right { display: flex; align-items: center; gap: 16px; }
+    .top-menu-item { color: var(--text-sub); cursor: pointer; transition: color 0.2s; font-weight: 500; }
+    .top-menu-item:hover { color: var(--accent); }
+    #top-clock { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 600; color: var(--text-main); }
+
+    /* Desktop View */
+    #desktop {
+      flex: 1;
+      position: relative;
+      background: radial-gradient(circle at 50% 30%, #24273a 0%, #181825 100%);
+      overflow: hidden;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      gap: 16px;
+    }
+
+    .icon {
+      width: 88px;
+      padding: 12px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .icon:hover { background: rgba(255, 255, 255, 0.05); transform: translateY(-2px); }
+    .icon p { font-size: 12px; color: var(--text-sub); font-weight: 500; text-align: center; }
+
+    /* Minimal Icon Graphics */
+    .app-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .icon:hover .app-icon {
+      border-color: rgba(137, 180, 250, 0.4);
+      background: rgba(137, 180, 250, 0.05);
+    }
+    .app-icon svg {
+      width: 22px;
+      height: 22px;
+      stroke: var(--accent);
+      stroke-width: 1.75;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+    }
+
+    /* Floating Windows */
+    .window {
+      position: absolute;
+      width: 480px;
+      height: 360px;
+      background: rgba(30, 30, 46, 0.85);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 280px;
+      min-height: 200px;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+    
+    .window.minimized {
+      transform: scale(0.9) translateY(40px);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .window.maximized {
+      top: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: calc(100vh - 84px) !important;
+      border-radius: 0;
+    }
+
+    .window-header {
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: move;
+    }
+    .window-title { font-size: 12px; font-weight: 600; color: var(--text-sub); letter-spacing: 0.3px; }
+    .window-controls { display: flex; gap: 8px; }
+    .window-controls button {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .window-controls button:hover { opacity: 0.8; }
+    .btn-close { background: var(--danger); }
+    .btn-min { background: var(--warning); }
+    .btn-max { background: var(--success); }
+
+    .window-body { flex: 1; overflow: auto; display: flex; flex-direction: column; }
+
+    /* Taskbar Bottom */
+    #taskbar {
+      height: 48px;
+      background: rgba(24, 24, 37, 0.85);
+      backdrop-filter: blur(12px);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+      z-index: 2000;
+    }
+
+    #start-btn {
+      padding: 6px 14px;
+      background: var(--accent);
+      color: var(--bg-surface);
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #start-btn:hover { background: var(--accent-hover); }
+
+    .taskbar-tasks { display: flex; gap: 6px; flex: 1; overflow-x: auto; }
+    .task-item {
+      padding: 6px 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--text-sub);
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .task-item svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
+    .task-item.active { background: rgba(137, 180, 250, 0.15); border-color: var(--accent); color: var(--accent); }
+
+    /* Start Menu */
+    #start-menu {
+      position: absolute;
+      bottom: 56px;
+      left: 16px;
+      width: 220px;
+      background: rgba(30, 30, 46, 0.95);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      display: none;
+      flex-direction: column;
+      padding: 6px;
+      box-shadow: var(--shadow);
+      z-index: 2001;
+    }
+    #start-menu button {
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      padding: 10px 12px;
+      text-align: left;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      transition: background 0.2s;
+    }
+    #start-menu button:hover { background: rgba(255, 255, 255, 0.05); }
+    #start-menu button svg { width: 16px; height: 16px; stroke: var(--accent); fill: none; stroke-width: 2; }
+
+    /* Applications Styling */
+    /* Notepad */
+    textarea.notepad {
+      width: 100%; height: 100%; background: transparent; color: var(--text-main);
+      border: none; padding: 14px; font-family: ui-monospace, monospace; font-size: 13px;
+      resize: none; outline: none; line-height: 1.5;
+    }
+
+    /* Calculator */
+    .calc-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 12px; height: 100%; }
+    .calc-screen {
+      grid-column: span 4; background: rgba(0, 0, 0, 0.2); color: var(--accent);
+      font-size: 24px; font-family: ui-monospace, monospace; text-align: right;
+      padding: 12px; border-radius: 8px; border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: flex-end; word-break: break-all;
+    }
+    .calc-btn {
+      background: rgba(255, 255, 255, 0.04); color: var(--text-main); border: 1px solid var(--border);
+      font-size: 15px; border-radius: 6px; cursor: pointer; transition: background 0.2s;
+    }
+    .calc-btn:hover { background: rgba(255, 255, 255, 0.1); }
+    .calc-btn.op { color: var(--accent); }
+
+    /* Browser App */
+    .browser-bar { display: flex; gap: 8px; padding: 10px; border-bottom: 1px solid var(--border); background: rgba(0,0,0,0.1); }
+    .browser-input {
+      flex: 1; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border);
+      color: var(--text-main); padding: 8px 14px; border-radius: 8px; font-size: 12px; outline: none;
+    }
+    .browser-input:focus { border-color: var(--accent); }
+
+    /* File Manager */
+    .fm-bar { padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-sub); }
+    .fm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 12px; padding: 12px; }
+    .fm-item {
+      display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px;
+      border-radius: 8px; cursor: pointer; font-size: 11px; text-align: center; color: var(--text-sub);
+    }
+    .fm-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text-main); }
+    .fm-item svg { width: 24px; height: 24px; stroke: var(--accent); fill: none; stroke-width: 1.75; }
+
+    /* Overlay / Welcome */
+    #welcome-overlay {
+      position: fixed; inset: 0; background: rgba(15, 15, 23, 0.85); backdrop-filter: blur(12px);
+      display: flex; align-items: center; justify-content: center; z-index: 3000; transition: opacity 0.3s;
+    }
+    #welcome-overlay.hidden { opacity: 0; pointer-events: none; }
+    .modal {
+      background: var(--bg-base); border: 1px solid var(--border); border-radius: 16px;
+      padding: 32px; text-align: center; max-width: 360px; box-shadow: var(--shadow);
+    }
+    .modal h1 { font-size: 20px; font-weight: 500; margin-bottom: 8px; color: var(--text-main); }
+    .modal p { font-size: 13px; color: var(--text-sub); margin-bottom: 24px; }
+    .modal button {
+      width: 100%; padding: 10px; background: var(--accent); color: var(--bg-surface);
+      border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s;
+    }
+    .modal button:hover { background: var(--accent-hover); }
+  </style>
+</head>
+<body>
+
+  <!-- Welcome Overlay -->
+  <div id="welcome-overlay">
+    <div class="modal">
+      <h1>Personal WebOS</h1>
+      <p>A minimal, lightweight web desktop environment.</p>
+      <button onclick="dismissWelcome()">Get Started</button>
+    </div>
+  </div>
+
+  <!-- Top Bar -->
+  <div id="top-bar">
+    <div class="top-left">
+      <span class="top-menu-item" onclick="toggleStartMenu()">⚡ WebOS</span>
+    </div>
+    <div class="top-right">
+      <span id="top-clock">00:00:00</span>
+    </div>
+  </div>
+
+  <!-- Desktop Environment -->
+  <div id="desktop">
+    <div class="icon" onclick="openApp('notepad')">
+      <div class="app-icon">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      </div>
+      <p>Notepad</p>
+    </div>
+    <div class="icon" onclick="openApp('calc')">
+      <div class="app-icon">
+        <svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><line x1="14" y1="16" x2="18" y2="16"/><line x1="8" y1="12" x2="10" y2="12"/><line x1="8" y1="16" x2="10" y2="16"/></svg>
+      </div>
+      <p>Calculator</p>
+    </div>
+    <div class="icon" onclick="openApp('filemanager')">
+      <div class="app-icon">
+        <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      </div>
+      <p>Files</p>
+    </div>
+    <div class="icon" onclick="openApp('browser')">
+      <div class="app-icon">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      </div>
+      <p>Browser</p>
+    </div>
+  </div>
+
+  <!-- Start Menu -->
+  <div id="start-menu">
+    <button onclick="openApp('notepad'); toggleStartMenu();">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      Notepad
+    </button>
+    <button onclick="openApp('calc'); toggleStartMenu();">
+      <svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><line x1="14" y1="16" x2="18" y2="16"/><line x1="8" y1="12" x2="10" y2="12"/><line x1="8" y1="16" x2="10" y2="16"/></svg>
+      Calculator
+    </button>
+    <button onclick="openApp('filemanager'); toggleStartMenu();">
+      <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      Files
+    </button>
+    <button onclick="openApp('browser'); toggleStartMenu();">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      Browser
+    </button>
+  </div>
+
+  <!-- Bottom Taskbar -->
+  <div id="taskbar">
+    <button id="start-btn" onclick="toggleStartMenu()">Menu</button>
+    <div class="taskbar-tasks" id="taskbar-tasks"></div>
+  </div>
+
+  <script>
+    let highestZIndex = 100;
+    const windows = {};
+
+    const icons = {
+      notepad: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+      calc: `<svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><line x1="14" y1="16" x2="18" y2="16"/><line x1="8" y1="12" x2="10" y2="12"/><line x1="8" y1="16" x2="10" y2="16"/></svg>`,
+      filemanager: `<svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
+      browser: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`
+    };
+
+    // Live Clock
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('top-clock').innerText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    function dismissWelcome() {
+      document.getElementById('welcome-overlay').classList.add('hidden');
+    }
+
+    function toggleStartMenu() {
+      const menu = document.getElementById('start-menu');
+      menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
+    }
+
+    // Close start menu when clicking desktop
+    document.getElementById('desktop').addEventListener('click', (e) => {
+      if (e.target.id === 'desktop') {
+        document.getElementById('start-menu').style.display = 'none';
+      }
+    });
+
+    // Window Manager
+    function openApp(appId) {
+      if (windows[appId]) {
+        restoreWindow(appId);
+        return;
+      }
+
+      const win = document.createElement('div');
+      win.className = 'window';
+      win.id = `win-${appId}`;
+      win.style.top = `${60 + Math.random() * 30}px`;
+      win.style.left = `${100 + Math.random() * 50}px`;
+      win.style.zIndex = ++highestZIndex;
+
+      let title = appId.charAt(0).toUpperCase() + appId.slice(1);
+      let content = '';
+
+      if (appId === 'notepad') {
+        content = `<textarea class="notepad" placeholder="Start typing..."></textarea>`;
+      } else if (appId === 'calc') {
+        win.style.width = '280px';
+        win.style.height = '340px';
+        content = `
+          <div class="calc-grid">
+            <div class="calc-screen" id="calc-screen">0</div>
+            <button class="calc-btn op" onclick="calcClear()">C</button>
+            <button class="calc-btn op" onclick="calcInput('/')">/</button>
+            <button class="calc-btn op" onclick="calcInput('*')">*</button>
+            <button class="calc-btn op" onclick="calcInput('-')">-</button>
+            <button class="calc-btn" onclick="calcInput('7')">7</button>
+            <button class="calc-btn" onclick="calcInput('8')">8</button>
+            <button class="calc-btn" onclick="calcInput('9')">9</button>
+            <button class="calc-btn op" onclick="calcInput('+')">+</button>
+            <button class="calc-btn" onclick="calcInput('4')">4</button>
+            <button class="calc-btn" onclick="calcInput('5')">5</button>
+            <button class="calc-btn" onclick="calcInput('6')">6</button>
+            <button class="calc-btn op" onclick="calcEval()">=</button>
+            <button class="calc-btn" onclick="calcInput('1')">1</button>
+            <button class="calc-btn" onclick="calcInput('2')">2</button>
+            <button class="calc-btn" onclick="calcInput('3')">3</button>
+            <button class="calc-btn" onclick="calcInput('0')">0</button>
+          </div>`;
+      } else if (appId === 'browser') {
+        win.style.width = '620px';
+        win.style.height = '400px';
+        content = `
+          <div class="browser-bar">
+            <input class="browser-input" id="browser-url" type="text" placeholder="Search the web or enter query..." onkeypress="if(event.key==='Enter') searchWebOS()">
+          </div>
+          <div id="browser-results" style="padding: 24px; overflow-y: auto; height: calc(100% - 50px); color: var(--text-main);">
+            <div style="text-align: center; margin-top: 50px;">
+              <h2 style="color: var(--accent); font-weight: 400; margin-bottom: 8px;">WebOS Search</h2>
+              <p style="color: var(--text-sub); font-size: 13px;">Type a query or URL above to test the browser.</p>
+            </div>
+          </div>`;
+      } else if (appId === 'filemanager') {
+        content = `
+          <div class="fm-bar">Location: /Home</div>
+          <div class="fm-grid">
+            <div class="fm-item">
+              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              Document.txt
+            </div>
+            <div class="fm-item">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              Image.png
+            </div>
+            <div class="fm-item">
+              <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              Projects
+            </div>
+          </div>`;
+      }
+
+      win.innerHTML = `
+        <div class="window-header">
+          <span class="window-title">${title}</span>
+          <div class="window-controls">
+            <button class="btn-min" onclick="minimizeWindow('${appId}')" title="Minimize"></button>
+            <button class="btn-max" onclick="maximizeWindow('${appId}')" title="Maximize"></button>
+            <button class="btn-close" onclick="closeWindow('${appId}')" title="Close"></button>
+          </div>
+        </div>
+        <div class="window-body">${content}</div>
+      `;
+
+      win.addEventListener('mousedown', () => focusWindow(appId));
+      setupDragging(win);
+
+      document.getElementById('desktop').appendChild(win);
+      windows[appId] = { element: win, minimized: false, maximized: false };
+
+      addTaskbarItem(appId, title);
+      focusWindow(appId);
+    }
+
+    function focusWindow(appId) {
+      if (windows[appId] && !windows[appId].minimized) {
+        windows[appId].element.style.zIndex = ++highestZIndex;
+        updateTaskbarState(appId);
+      }
+    }
+
+    function minimizeWindow(appId) {
+      const winData = windows[appId];
+      if (winData) {
+        winData.element.classList.add('minimized');
+        winData.minimized = true;
+        updateTaskbarState(null);
+      }
+    }
+
+    function maximizeWindow(appId) {
+      const winData = windows[appId];
+      if (winData) {
+        winData.element.classList.toggle('maximized');
+        winData.maximized = winData.element.classList.contains('maximized');
+      }
+    }
+
+    function restoreWindow(appId) {
+      const winData = windows[appId];
+      if (winData) {
+        winData.element.classList.remove('minimized');
+        winData.minimized = false;
+        focusWindow(appId);
+      }
+    }
+
+    function closeWindow(appId) {
+      if (windows[appId]) {
+        windows[appId].element.remove();
+        delete windows[appId];
+        removeTaskbarItem(appId);
+      }
+    }
+
+    // Taskbar Tracking
+    function addTaskbarItem(appId, title) {
+      const tasks = document.getElementById('taskbar-tasks');
+      const item = document.createElement('div');
+      item.className = 'task-item';
+      item.id = `task-${appId}`;
+      item.innerHTML = `${icons[appId]} <span>${title}</span>`;
+      item.onclick = () => {
+        if (windows[appId].minimized) {
+          restoreWindow(appId);
+        } else if (windows[appId].element.style.zIndex == highestZIndex) {
+          minimizeWindow(appId);
+        } else {
+          focusWindow(appId);
+        }
+      };
+      tasks.appendChild(item);
+    }
+
+    function removeTaskbarItem(appId) {
+      const item = document.getElementById(`task-${appId}`);
+      if (item) item.remove();
+    }
+
+    function updateTaskbarState(activeAppId) {
+      document.querySelectorAll('.task-item').forEach(el => el.classList.remove('active'));
+      if (activeAppId) {
+        const activeItem = document.getElementById(`task-${activeAppId}`);
+        if (activeItem) activeItem.classList.add('active');
+      }
+    }
+
+    // Window Dragging Logic
+    function setupDragging(win) {
+      const header = win.querySelector('.window-header');
+      let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+
+      header.onmousedown = (e) => {
+        if (win.classList.contains('maximized')) return;
+        e.preventDefault();
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+
+        document.onmousemove = (e) => {
+          e.preventDefault();
+          pos1 = pos3 - e.clientX;
+          pos2 = pos4 - e.clientY;
+          pos3 = e.clientX;
+          pos4 = e.clientY;
+          win.style.top = (win.offsetTop - pos2) + "px";
+          win.style.left = (win.offsetLeft - pos1) + "px";
+        };
+
+        document.onmouseup = () => {
+          document.onmousemove = null;
+          document.onmouseup = null;
+        };
+      };
+    }
+
+    // Calculator App Logic
+    let calcExpr = '';
+    function calcInput(val) {
+      calcExpr += val;
+      document.getElementById('calc-screen').innerText = calcExpr;
+    }
+    function calcClear() {
+      calcExpr = '';
+      document.getElementById('calc-screen').innerText = '0';
+    }
+    function calcEval() {
+      try {
+        calcExpr = eval(calcExpr).toString();
+        document.getElementById('calc-screen').innerText = calcExpr;
+      } catch {
+        document.getElementById('calc-screen').innerText = 'Error';
+        calcExpr = '';
+      }
+    }
+
+    // Simulated Browser App Logic
+    function searchWebOS() {
+      const query = document.getElementById('browser-url').value.trim();
+      const container = document.getElementById('browser-results');
+      
+      if (!query) return;
+
+      container.innerHTML = `
+        <h3 style="font-size: 14px; margin-bottom: 16px; color: var(--text-sub);">Results for "${query}":</h3>
+        <div style="margin-bottom: 16px; padding: 14px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid var(--border);">
+          <strong style="display:block; margin-bottom: 4px; font-size: 14px;">Open External Site</strong>
+          <p style="font-size: 12px; color: var(--text-sub); margin-bottom: 10px;">Most external websites block direct iframe embedding due to security policies.</p>
+          <a href="https://www.google.com/search?q=${encodeURIComponent(query)}" target="_blank" style="display: inline-block; color: var(--bg-surface); background: var(--accent); padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 12px; text-decoration: none;">Launch "${query}" in new tab ↗</a>
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>
